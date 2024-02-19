@@ -1,6 +1,6 @@
 ---
-title: "STAT5009 Project Report"
-author: "Gabriel Sim - 12894732"
+title: "Forecasting TESLA Stock Price"
+author: "Gabe"
 subtitle: 'Stock Price Prediction: ARIMA model for time series data analysis'
 output:
   word_document:
@@ -11,14 +11,6 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 
 ```
-# Declaration of Originality
-
-1.  This assignment is my/our own original work, except where I/we have appropriately cited the original source (appropriate citation of original work will vary from discipline to discipline).
-
-2.  This assignment has not previously been submitted in any form for this or any other unit, degree or diploma at any university or other institute of tertiary education.
-
-3.  I/we acknowledge that it is my responsibility to check that the file I/we have submitted is: a) readable, b) the correct file and c) fully complete.
-
 # Overview
 
 The objective of this project is to tackle time series data by utilising Machine Learning to effectively train with observed data and create an acceptable prediction model with high accuracy. The time series data in question is the stock price of Tesla Inc. taken from Yahoo Finance. Financial data analysts and stock traders often carry out stock price predictions in order to make the most informed decision when it comes to buying or selling large volume of shares.
