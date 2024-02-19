@@ -1,0 +1,276 @@
+---
+title: "STAT5009 Project Report"
+author: "Gabriel Sim - 12894732"
+subtitle: 'Stock Price Prediction: ARIMA model for time series data analysis'
+output:
+  word_document:
+    toc: yes
+    keep_md: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+# Declaration of Originality
+
+1.  This assignment is my/our own original work, except where I/we have appropriately cited the original source (appropriate citation of original work will vary from discipline to discipline).
+
+2.  This assignment has not previously been submitted in any form for this or any other unit, degree or diploma at any university or other institute of tertiary education.
+
+3.  I/we acknowledge that it is my responsibility to check that the file I/we have submitted is: a) readable, b) the correct file and c) fully complete.
+
+# Overview
+
+The objective of this project is to tackle time series data by utilising Machine Learning to effectively train with observed data and create an acceptable prediction model with high accuracy. The time series data in question is the stock price of Tesla Inc. taken from Yahoo Finance. Financial data analysts and stock traders often carry out stock price predictions in order to make the most informed decision when it comes to buying or selling large volume of shares.
+
+This report highlights the approaches taken to predict stock price and the evaluation of the results and performance of the prediction model. More common data-sets usually have a single prediction variable that is dependent on one or more independent variables. These data-sets can usually be evaluated with a regression model to identify a linear relationship between the variables. In this unique case, although there are 6 variables in the stock price data-set, only one of them (Close Price) will be used to train the prediction model.
+
+# Exploratory Data Analysis
+
+As described in the Project Proposal, the Auto Regressive Integrated Moving Average (ARIMA) model is suited to deal with a time series data set. The ARIMA model predicts future values based on past values which explains why it only needs the Closing Price column in the data set.
+
+## The Data
+
+Extracted from Yahoo Finance, the financial data contains the following six variables: open, high, low, close, volume and adjusted. The variable of only merit is close which is the last price it was listed during the trading day. Although adjusted can be argued to be more representative of a company's valuation, adjusted stock price is affected by other financial factors such as Initial Public Offerings(IPOs), dividend payouts and stock splits. These are additional data observations specific to each company therefore the closing price is more viable to use for the proposed prediction model. At the time of the project proposal, the range collected is from 22/04/2019 to 21/04/2023 consisting of 1008 observations (otherwise 1008 trading days).
+
+### Load relevant library packages
+
+```{r}
+# Load packages applicable to deal with time series data
+library(quantmod)
+library(forecast)
+library(Metrics)
+library(tseries)
+library(ggplot2)
+library(fpp)
+library(knitr)
+library(timeSeries)
+library(xts)
+library(zoo)
+library(TSstudio)
+library(gridExtra)
+library(dplyr)
+library(tidyverse)
+library(tibbletime)
+library(ggfortify)
+```
+
+### Load Data
+
+```{r}
+# Load Stock Price Data from Yahoo Finance
+# The object that stores the data is an 'xts' object which stands for eXtensible Time Series 
+getSymbols("TSLA", from="2019-04-22", to="2023-04-21")
+head(TSLA)
+print("Number of observations: ")
+print(nrow(TSLA))
+```
+
+```{r}
+TSLA_Close <- TSLA[,4]    # Use closing price of stock which is the 4th column
+# Plot our data
+par(mfrow=c(1,1))
+plot(TSLA_Close, ylab="$USD", xlab="Trading Days")
+
+# Describe our data
+summary(TSLA_Close)
+sd(TSLA_Close)
+```
+
+## The Method
+
+The ARIMA model can be treated like a regression model when it comes to data training and testing. With a non time series data, the data is split into a train and test set with random sampling to avoid bias in the training. For a time series data-set however, the data is split using time as in it is split between earlier and later observations. The model trains with earlier values and is tested against the later values.
+
+## Data Processing
+
+### Splitting into Train and Test set
+
+Entire data set will be split with 80% as the Training Set and the remaining 20% as the Testing Set. As mentioned earlier, the splitting criteria on a time series is based on the flow of time. Therefore the first 80% of instances will be the Train Set with the latter 20% as the Test Set.
+
+```{r}
+# splitting into train and test set
+
+train_series <-TSLA_Close[ 1:806]      #first 80% of data(22/04/2019 - 30/06/2022)
+test_series <- TSLA_Close[-(1:806)]
+```
+
+### Log Transformation
+
+Log transformation is applied to stock price so that measured value of \$USD will be equally scaled for each observation. This will improve the accuracy of prediction for the ARIMA model.
+
+```{r}
+### Log tranformation stock data
+log_train <- log(train_series)
+plot(log_train, main = "Log scaled values of train series")
+```
+
+### Stationary Test
+
+Another issue with time series data is that it is non-stationary. Transforming into a stationary data-set is important for the ARIMA model to recognise trends and patterns with valid accuracy. An Augmented Dickey-Fuller (ADF) Test will be able to check if the stock price data is stationary. We reject the null hypothesis which is the data is stationary if the p-value is less than 0.05.
+
+```{r}
+adf.test(train_series)
+adf.test(log_train)
+```
+
+The log scaled train series shows the p-value at 0.9748 therefore the data is non-stationary. The next step looks at Order of Differencing once or several times to make the data stationary.
+
+After the ADF test we apply ACF (Autocorrelation function) and PACF (Partial autocorrelation function) functions to the dataset.
+
+```{r}
+## Plot ACF and PACF
+acf(log_train, lag.max=320)
+pacf(log_train, lag.max=320)
+```
+
+Given the ACF plot, there is significant autocorrelation up to around 250 lag. This means that there is strong correlation between each series value up to around 250 time points away.
+
+Given the PACF plot, there is significant correlation at lag 1 and every other lag hovering around 0. This suggests a strong autocorrelation between the current series value and the immediate preceding value (1 time point before).
+
+### Differencing
+
+As the data is non-stationary, differencing at lag = 1 is applied in an attempt to transform it into stationary data.
+
+```{r}
+# difference of the log scaled values
+diff_log_train <- diff(log_train, lag = 1)
+
+diff_log_train <- na.locf(diff_log_train, na.rm = TRUE,
+                     fromLast = TRUE)
+plot(diff_log_train, main='Differenced Log Train Series')
+```
+
+Given the differencing log values plot, it can be seen that the data hovers around a mean of 0 which proves that the data has now become stationary. Following up with another ADF test now gives a p-value of 0.01 which is below 0.05. Therefore the null hypothesis of the data being non-stationary is rejected.
+
+```{r}
+adf.test(diff_log_train)
+```
+
+P-value of 0.01 is less than 0.05 which means the data is now stationary.
+
+```{r}
+acf(diff_log_train)
+pacf(diff_log_train)
+```
+
+Given both ACF and PACF plots, there are significant spikes at lags 7, 19 and 24 for the differenced data.
+
+## ARIMA model
+
+The use of the auto.arima function will return the best model according to AICc, AIC or BIC value. It fits the model with varying parameters:
+
+-   p - order of autoregression
+
+-   d - number of differencing
+
+-   q - order of moving average
+
+As the first ADF test has shown that the data is non-stationary, the stationary parameter is set to 'FALSE' whilst fitting the model.
+
+### Fitting Model
+
+```{r}
+set.seed(314)
+auto.arima(train_series, stationary=FALSE, ic = c("aicc", "aic", "bic"), trace=TRUE)
+auto.arima(log_train, stationary=FALSE, ic = c("aicc", "aic", "bic"), trace=TRUE)
+```
+
+For both non-log and log scaled series, the best model parameters is (0,1,0) which is in line with the second ADF test. One differencing was enough to achieve stationary data.
+
+### Train Model
+
+```{r}
+train_arima <- Arima(train_series, order=c(0,1,0), include.drift=TRUE)
+log_train_arima <- Arima(log_train, order=c(0,1,0), include.drift=TRUE)
+summary(train_arima)
+summary(log_train_arima)
+```
+
+### Forecast
+
+With the trained ARIMA models, forecasting is performed up to 202 observations to match the length of the test series.
+
+```{r}
+fcast_train <- forecast(train_arima, h=202)
+fcast_log_train <- forecast(log_train_arima, h=202)
+summary(fcast_train)
+summary(fcast_log_train)
+```
+
+The model with log scaled values gives a significantly lower RMSE. These are the parameters of the model to be used for comparison against the Test Series.
+
+```{r}
+log_train_arima
+```
+
+### Comparison against Test Series
+
+As the forecasted values are log scaled, the inverse function is applied. By calculating the exponential value of a log value, it reverts back to the pre-scaled value.
+
+```{r}
+best_model <- fcast_log_train
+
+best_model$mean <- exp(fcast_log_train$mean)
+best_model$lower <- exp(fcast_log_train$lower)
+best_model$upper <- exp(fcast_log_train$upper)
+best_model$fitted <- exp(fcast_log_train$fitted)
+best_model$x <- exp(fcast_log_train$x)
+```
+
+```{r}
+test_forecast(forecast.obj = best_model, actual = TSLA_Close, test = test_series, Xgrid = TRUE, Ygrid = TRUE) %>%
+  plotly::layout(legend = list(x = 0.1, y = 0.95),
+                 title = "Comparision of Predicted and Actual Closing Prices")
+```
+
+Visually, the forecast and the actual value trend do not match. If the test values, are not plotted, it would seem that overall there is a general upward trend in the stock price of TESLA.
+
+### Best Model for Forecasting
+
+After the training and testing, the entire time series is fitted for forecasting.
+
+```{r}
+log_TSLA_close <- log(TSLA_Close)
+log_TSLA_close_arima <- Arima(log_TSLA_close, order=c(0,1,0), include.drift=TRUE)
+fcast_log_TSLA_close_arima <- forecast(log_TSLA_close_arima, h=202)
+
+```
+
+The exponential function is used to revert back to pre-scale values.
+
+```{r}
+best_forecast <- fcast_log_TSLA_close_arima
+
+best_forecast$mean <- exp(fcast_log_TSLA_close_arima$mean)
+best_forecast$lower <- exp(fcast_log_TSLA_close_arima$lower)
+best_forecast$upper <- exp(fcast_log_TSLA_close_arima$upper)
+best_forecast$fitted <- exp(fcast_log_TSLA_close_arima$fitted)
+best_forecast$x <- exp(fcast_log_TSLA_close_arima$x)
+```
+
+```{r}
+plot_forecast(best_forecast, title = "Forecasting of TESLA Stock Closing price from 01/07/22 - 20/04/23", Xtitle = "Year", Ytitle = "Closing Stock Price") %>% 
+  plotly::layout(legend = list(x = 0.1, y = 0.95),
+                 margin=list(l=20, r=20, t=20, b=20))
+```
+
+The plot above shows the estimated forecast to both an 80% and 95% confidence interval.
+
+```{r}
+confint(log_TSLA_close_arima)
+best_forecast$mean
+```
+
+```{r}
+ggtsdiag(log_TSLA_close_arima)
+```
+
+# Evaluation
+
+Overall it would seem that the ARIMA model is a very suitable model for stock price prediction. Despite the predicted trend not matching the actual trend, it adheres to the implicit assumption that future values resemble past values. The incorrect prediction can be explained by the impact of external factors such as financial crises, significant corporate decisions or rapid technological changes.
+
+Perhaps, if the time range was limited to more recent years where the stock prices were above \$100, as opposed to the early years of TESLA stock hovering between \$10-\$15; the variance of the error could be significantly reduced. Otherwise additional functions and library packages can be explored to help understand the sudden change in trend.
+
+A useful lens to apply could be the use of the library package 'gtrendsR' where trending news on Google can be retrieved to display news articles that may reveal significant information about TESLA. News Sentiment Analysis could also be performed to investigate popularity of interest in TESLA over time; certain library packages already exist that can calculate a score to determine a positive or negative sentiment classification after some Data Mining.
+
+A possible alternate model that could be used is the Generalised AutoRegressive Conditional Heteroskedasticity (GARCH) model. The ARIMA model estimates the conditional mean whereas the GARCH model estimates the conditional variance.
